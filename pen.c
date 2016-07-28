@@ -298,6 +298,7 @@ static int webstats(void)
 		"<tr>\n"
 		"<td bgcolor=\"#80f080\">client</td>\n"
 		"<td bgcolor=\"#80f080\">address</td>\n"
+		"<td bgcolor=\"#80f080\">port</td>\n"
 		"<td bgcolor=\"#80f080\">age(secs)</td>\n"
 		"<td bgcolor=\"#80f080\">last server</td>\n"
 		"<td bgcolor=\"#80f080\">connects</td>\n"
@@ -310,13 +311,14 @@ static int webstats(void)
 			"<tr>\n"
 			"<td>%d</td>\n"
 			"<td>%s</td>\n"
+			"<td>%d</td>\n"
 			"<td>%ld</td>\n"
 			"<td>%d</td>\n"
 			"<td>%ld</td>\n"
 			"<td>%" PRIu64 "</td>\n"
 			"<td>%" PRIu64 "</td>\n"
 			"</tr>\n",
-			i, pen_ntoa(&clients[i].addr),
+			i, pen_ntoa(&clients[i].addr), pen_getport(&clients[i].addr),
 			(long)(now-clients[i].last), clients[i].server, clients[i].connects,
 			clients[i].csx, clients[i].crx);
 	}
