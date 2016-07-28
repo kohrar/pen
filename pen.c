@@ -92,6 +92,7 @@ static int hupcounter = 0;
 static int stats_flag = 0;
 static int restart_log_flag = 0;
 #endif
+static int ssh = 0;
 static int http = 0;
 
 static char *cfgfile = NULL;
@@ -507,7 +508,37 @@ static void log_request(FILE *fp, int i, unsigned char *b, int n)
 		fprintf(fp, "%c", isascii(b[j])?b[j]:'.');
 	}
 	fprintf(fp, "\n");
+	fflush(fp);
 }
+
+
+/* Logs connections and disconnections.
+ *
+   Log format:
+       timestamp client_ip:client_port to server_ip:server_port  action 
+
+    where action is "connect" or "disconnect"
+*/
+static void log_connection(FILE *fp, int i, int state)
+{
+	DEBUG(1, "Logging connection");
+	fprintf(fp, "%ld ", (long)now);
+
+	fprintf(fp, "%s:%d to %s:%d ", pen_ntoa(&clients[conns[i].client].addr),
+							pen_getport(&clients[conns[i].client].addr),
+							pen_ntoa(&servers[conns[i].server].addr),
+							pen_getport(&servers[conns[i].server].addr));
+
+	if (state == 0) {
+		fprintf(fp, "connect");
+	} else {
+		fprintf(fp, "disconnect");
+	}
+
+	fprintf(fp, "\n");
+	fflush(fp);
+}
+
 
 static int rewrite_request(int i, int n, char *b)
 {
@@ -702,7 +733,7 @@ static int copy_up(int i)
 
 		if (debuglevel > 2) dump(b, rc);
 
-		if (logfp) {
+		if (logfp && ! ssh) {
 			log_request(logfp, i, b, rc);
 			if (debuglevel > 2) log_request(stderr, i, b, rc);
 		}
@@ -865,6 +896,7 @@ static void usage(void)
 	       "  -O option	use option in penctl format\n"
 	       "  -P	use poll() rather than select()\n"
 	       "  -Q    use kqueue to manage events (BSD)\n"
+	       "  -S    use with SSH server. Logging does not log traffic as HTTP requests\n"
 	       "  -W    use weight for server selection\n"
 	       "  -X	enable 'exit' command for control port\n"
 	       "  -a	debugging dumps in ascii format\n"
@@ -1025,7 +1057,7 @@ static void open_log(char *logfile)
 				hp->h_addr, hp->h_length);
 			logserver.sin_port = htons(atoi(p));
 		} else {	/* log to file */
-			DEBUG(2, "file log to %s", logfile);
+			DEBUG(1, "file log to %s", logfile);
 			logfp = fopen(logfile, "a");
 			if (!logfp) error("Can't open logfile %s", logfile);
 		}
@@ -1152,6 +1184,7 @@ static void write_cfg(char *p)
 	fprintf(fp, "debug %d\n", debuglevel);
 	if (server_alg & ALG_HASH) fprintf(fp, "hash\n");
 	else fprintf(fp, "no hash\n");
+	if (ssh) fprintf(fp, "ssh\n");
 	if (http) fprintf(fp, "http\n");
 	else fprintf(fp, "no http\n");
 	if (logfile) fprintf(fp, "log %s\n", logfile);
@@ -1346,6 +1379,8 @@ static void do_cmd(char *b, void (*output)(void *, char *, ...), void *op)
 		}
 	} else if (!strcmp(p, "hash")) {
 		server_alg |= ALG_HASH;
+	} else if (!strcmp(p, "ssh")) {
+		ssh = 1;
 	} else if (!strcmp(p, "http")) {
 		http = 1;
 	} else if (!strcmp(p, "idle_timeout")) {
@@ -1692,7 +1727,7 @@ static void read_cfg(char *cf)
 	fclose(fp);
 }
 
-static void add_client(int downfd, struct sockaddr_storage *cli_addr)
+static int add_client(int downfd, struct sockaddr_storage *cli_addr)
 {
 	int rc = 0;
 	unsigned char b[BUFFER_MAX];
@@ -1709,7 +1744,7 @@ static void add_client(int downfd, struct sockaddr_storage *cli_addr)
 			int err = ERR_get_error();
 			debug("SSL: error allocating handle: %s",
 				ERR_error_string(err, NULL));
-			return;
+			return conn;
 		}
 		SSL_set_fd(ssl, downfd);
 		SSL_set_accept_state(ssl);
@@ -1727,13 +1762,13 @@ static void add_client(int downfd, struct sockaddr_storage *cli_addr)
 		if (rc < 0) {
 			if (errno != EINTR)
 				debug("Error receiving data");
-			return;
+			return conn;
 		}
 	/* we need a downfd for udp as well */
 		downfd = socket_nb(cli_addr->ss_family, protoid, 0);
 		if (downfd == -1) {
 			debug("Can't create downfd");
-			return;
+			return conn;
 		}
 #ifdef SO_REUSEPORT
 		setsockopt(downfd, SOL_SOCKET, SO_REUSEPORT, &one, sizeof one);
@@ -1742,19 +1777,19 @@ static void add_client(int downfd, struct sockaddr_storage *cli_addr)
 		if (n != 0) {
 			debug("getsockname returns %d, errno = %d", n, errno);
 			close(downfd);
-			return;
+			return conn;
 		}
 		n = bind(downfd, &listenaddr, listenlen);
 		if (n != 0) {
 			debug("bind returns %d, errno = %d", n, errno);
 			close(downfd);
-			return;
+			return conn;
 		}
 		n = connect(downfd, (struct sockaddr *)cli_addr, pen_ss_size(cli_addr));
 		if (n != 0) {
 			debug("connect (downfd = %d) returns %d, errno = %d", downfd, n, errno);
 			close(downfd);
-			return;
+			return conn;
 		}
 	}
 
@@ -1777,21 +1812,21 @@ static void add_client(int downfd, struct sockaddr_storage *cli_addr)
 		conns[conn].upfd = -1;
 		conns[conn].state = CS_CONNECTED|CS_CLOSED_UP;
 		if (!udp) event_add(conns[conn].downfd, EVENT_READ);
-		return;
+		return conn;
 	}
 
 	conns[conn].initial = conns[conn].server = initial_server(conn);
 	if (conns[conn].initial == -1) {
 		DEBUG(1, "No initial server found, giving up");
 		close_conn(conn);
-		return;
+		return conn;
 	}
 	if (!try_server(conns[conn].initial, conn)) {
 		/* try_server rejected the client, try another */
 		if (!failover_server(conn)) {
 			DEBUG(1, "No failover server found, giving up");
 			//close_conn(conn);
-			return;
+			return conn;
 		}
 	}
 
@@ -1801,6 +1836,8 @@ static void add_client(int downfd, struct sockaddr_storage *cli_addr)
 		conns[conn].state &= ~CS_HALFDEAD;
 		DEBUG(2, "add_client: wrote %d bytes to socket %d", rc, conns[conn].upfd);
 	}
+
+	return conn;
 }
 
 static int flush_down(int i)
@@ -1996,7 +2033,14 @@ static void check_listen_socket(void)
 				DEBUG(1, "clilen: %s", strerror(errno));
 				break;
 			}
-			add_client(downfd, &cli_addr);
+
+			/* Add client, get client ID */
+			int conn = add_client(downfd, &cli_addr);
+
+			if (logfp && ssh) {
+				/* log a new connection */
+				log_connection(logfp, conn, 0);
+			}
 		}
 		DEBUG(2, "accepted %d connections", i);
 	}
@@ -2137,7 +2181,7 @@ static int handle_events(int *pending_close)
 	int fd, conn, events;
 	int npc = 0;
 
-        for (fd = event_fd(&events); fd != -1; fd = event_fd(&events)) {
+	for (fd = event_fd(&events); fd != -1; fd = event_fd(&events)) {
 		int closing = 0;
 		DEBUG(2, "event_fd returns fd=%d, events=%d", fd, events);
 		if (events == 0) continue;
@@ -2184,13 +2228,18 @@ static int handle_events(int *pending_close)
 		}
 		if (conns[conn].state == CS_CLOSED) {
 			DEBUG(2, "Connection %d was closed", conn);
+
+			if (logfp && ssh) {
+				log_connection(logfp, conn, 1);
+			}
+
 			closing = 1;
 		}
 
 		if (closing) {
 			pending_close[npc++] = conn;
 		}
-        }
+	}
 	return npc;
 }
 
@@ -2311,8 +2360,10 @@ static int options(int argc, char **argv)
 			event_init = poll_init;
 			break;
 		case 'S':
-			fprintf(stderr, "As of 0.28.1 the server table is expanded dynamically,\n"
-					"making the -S option obsolete\n");
+			// -S toggles SSH flag
+			// fprintf(stderr, "As of 0.28.1 the server table is expanded dynamically,\n"
+			// 		"making the -S option obsolete\n");
+			ssh = 1;
 			break;
 		case 'T':
 			tracking_time = atoi(optarg);
