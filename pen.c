@@ -257,17 +257,17 @@ static int webstats(void)
 	fprintf(fp,
 		"<table bgcolor=\"#c0c0c0\">\n"
 		"<tr>\n"
-		"<td bgcolor=\"#80f080\">server</td>\n"
-		"<td bgcolor=\"#80f080\">address</td>\n"
-		"<td bgcolor=\"#80f080\">status</td>\n"
-		"<td bgcolor=\"#80f080\">port</td>\n"
-		"<td bgcolor=\"#80f080\">connections</td>\n"
-		"<td bgcolor=\"#80f080\">max soft</td>\n"
-		"<td bgcolor=\"#80f080\">max hard</td>\n"
-		"<td bgcolor=\"#80f080\">sent</td>\n"
-		"<td bgcolor=\"#80f080\">received</td>\n"
-		"<td bgcolor=\"#80f080\">weight</td>\n"
-		"<td bgcolor=\"#80f080\">prio</td>\n"
+		"<td bgcolor=\"#80f080\">Server</td>\n"
+		"<td bgcolor=\"#80f080\">Address</td>\n"
+		"<td bgcolor=\"#80f080\">Status</td>\n"
+		"<td bgcolor=\"#80f080\">Port</td>\n"
+		"<td bgcolor=\"#80f080\">Connections</td>\n"
+		"<td bgcolor=\"#80f080\">Max soft</td>\n"
+		"<td bgcolor=\"#80f080\">Max hard</td>\n"
+		"<td bgcolor=\"#80f080\">Sent</td>\n"
+		"<td bgcolor=\"#80f080\">Received</td>\n"
+		"<td bgcolor=\"#80f080\">Weight</td>\n"
+		"<td bgcolor=\"#80f080\">Prio</td>\n"
 		"</tr>\n");
 	for (i = 0; i < nservers; i++) {
 		fprintf(fp,
@@ -297,14 +297,14 @@ static int webstats(void)
 	fprintf(fp,
 		"<table bgcolor=\"#c0c0c0\">\n"
 		"<tr>\n"
-		"<td bgcolor=\"#80f080\">client</td>\n"
-		"<td bgcolor=\"#80f080\">address</td>\n"
-		"<td bgcolor=\"#80f080\">port</td>\n"
-		"<td bgcolor=\"#80f080\">age(secs)</td>\n"
-		"<td bgcolor=\"#80f080\">last server</td>\n"
-		"<td bgcolor=\"#80f080\">connects</td>\n"
-		"<td bgcolor=\"#80f080\">sent</td>\n"
-		"<td bgcolor=\"#80f080\">received</td>\n"
+		"<td bgcolor=\"#80f080\">Client</td>\n"
+		"<td bgcolor=\"#80f080\">Address</td>\n"
+		"<td bgcolor=\"#80f080\">Port</td>\n"
+		"<td bgcolor=\"#80f080\">Age(secs)</td>\n"
+		"<td bgcolor=\"#80f080\">Last server</td>\n"
+		"<td bgcolor=\"#80f080\">Connects</td>\n"
+		"<td bgcolor=\"#80f080\">Sent</td>\n"
+		"<td bgcolor=\"#80f080\">Received</td>\n"
 		"</tr>\n");
 	for (i = 0; i < clients_max; i++) {
 		if (clients[i].last == 0) continue;
@@ -331,13 +331,15 @@ static int webstats(void)
 	fprintf(fp,
 		"<table bgcolor=\"#c0c0c0\">\n"
 		"<tr>\n"
-		"<td bgcolor=\"#80f080\">connection</td>\n"
-		"<td bgcolor=\"#80f080\">downfd</td>\n"
-		"<td bgcolor=\"#80f080\">upfd</td>\n"
-		"<td bgcolor=\"#80f080\">pending data down</td>\n"
-		"<td bgcolor=\"#80f080\">pending data up</td>\n"
-		"<td bgcolor=\"#80f080\">client</td>\n"
-		"<td bgcolor=\"#80f080\">server</td>\n"
+		"<td bgcolor=\"#80f080\">Connection</td>\n"
+		"<td bgcolor=\"#80f080\">Downfd</td>\n"
+		"<td bgcolor=\"#80f080\">Upfd</td>\n"
+		"<td bgcolor=\"#80f080\">Pending data down</td>\n"
+		"<td bgcolor=\"#80f080\">Pending data up</td>\n"
+		"<td bgcolor=\"#80f080\">Client</td>\n"
+		"<td bgcolor=\"#80f080\">Client IP</td>\n"
+		"<td bgcolor=\"#80f080\">Server</td>\n"
+		"<td bgcolor=\"#80f080\">Server IP</td>\n"
 		"</tr>\n");
 	for (i = 0; i < connections_max; i++) {
 		if (conns[i].downfd == -1) continue;
@@ -348,12 +350,23 @@ static int webstats(void)
 			"<td>%d</td>\n"
 			"<td>%d</td>\n"
 			"<td>%d</td>\n"
-			"<td>%d</td>\n"
-			"<td>%d</td>\n"
-			"</tr>\n",
+			"<td>%d</td>\n",
 			i, conns[i].downfd, conns[i].upfd,
 			conns[i].downn, conns[i].upn,
-			conns[i].client, conns[i].server);
+			conns[i].client);
+
+		fprintf(fp,
+			"<td>%s:%d</td>\n",
+			pen_ntoa(&clients[conns[i].client].addr), pen_getport(&clients[conns[i].client].addr)
+			);
+
+		fprintf(fp,
+			"<td>%d</td>\n"
+			"<td>%s:%d</td>\n"
+			"</tr>\n",
+			conns[i].server,
+			pen_ntoa(&servers[conns[i].server].addr), pen_getport(&servers[conns[i].server].addr)
+			);
 	}
 	fprintf(fp, "</table>\n");
 	fprintf(fp,
@@ -515,14 +528,25 @@ static void log_request(FILE *fp, int i, unsigned char *b, int n)
 /* Logs connections and disconnections.
  *
    Log format:
-       timestamp client_ip:client_port to server_ip:server_port  action 
+       date time - client_ip:client_port to server_ip:server_port  action 
 
     where action is "connect" or "disconnect"
 */
 static void log_connection(FILE *fp, int i, int state)
 {
-	DEBUG(1, "Logging connection");
-	fprintf(fp, "%ld ", (long)now);
+	char nowstr[80];
+	struct tm *nowtm;
+
+	if (i < 0) {
+		// connection failed...?
+		return;
+	}
+
+	DEBUG(2, "Logging connection");
+
+	nowtm = localtime(&now);
+	strftime(nowstr, sizeof(nowstr), "%Y-%m-%d %H:%M:%S", nowtm);
+	fprintf(fp, "%s: ", nowstr);
 
 	fprintf(fp, "%s:%d to %s:%d ", pen_ntoa(&clients[conns[i].client].addr),
 							pen_getport(&clients[conns[i].client].addr),
@@ -537,6 +561,12 @@ static void log_connection(FILE *fp, int i, int state)
 
 	fprintf(fp, "\n");
 	fflush(fp);
+}
+
+static void log_close_conn(int conn) {
+	if (logfp && ssh) {
+		log_connection(logfp, conn, 1);
+	}
 }
 
 
@@ -1324,6 +1354,7 @@ static void do_cmd(char *b, void (*output)(void *, char *, ...), void *op)
 		} else {
 			output(op, "Forcibly closing connection %d\n", conn);
 			close_conn(conn);
+			log_close_conn(conn);
 		}
 	} else if (!strcmp(p, "connection")) {
 		p = strtok(NULL, " ");
@@ -1819,6 +1850,7 @@ static int add_client(int downfd, struct sockaddr_storage *cli_addr)
 	if (conns[conn].initial == -1) {
 		DEBUG(1, "No initial server found, giving up");
 		close_conn(conn);
+		log_close_conn(conn);
 		return conn;
 	}
 	if (!try_server(conns[conn].initial, conn)) {
@@ -2071,6 +2103,7 @@ static void check_if_connected(int i)
 	if (getsockopt(conns[i].upfd, SOL_SOCKET, SO_ERROR, (void *)&result, &length) < 0) {
 		debug("Can't getsockopt: %s", strerror(errno));
 		close_conn(i);
+		log_close_conn(i);
 		return;
 	}
 	if (result != 0) {
@@ -2265,6 +2298,7 @@ static void pending_and_closing(int *pending_close, int npc)
 		int conn = pending_close[j];
                 if (closing_time(conn)) {
 			close_conn(conn);
+			log_close_conn(conn);
 		}
         }
 	if (idlers > idlers_wanted) {
@@ -2290,6 +2324,7 @@ static void check_idle_timeout(void)
 			DEBUG(2, "Connection %d idle for %d seconds, closing",
 				conn, now-conns[conn].t);
 			close_conn(conn);
+			log_close_conn(conn);
 		}
 		conn = (conn+1)%connections_max;
 	}
@@ -2631,7 +2666,10 @@ int main(int argc, char **argv)
 	DEBUG(1, "Exiting, cleaning up...");
 	if (logfp) fclose(logfp);
 	for (i = 0; i < connections_max; i++) {
-		if (conns[i].downfd != -1) close_conn(i);
+		if (conns[i].downfd != -1) {
+			close_conn(i);
+			log_close_conn(i);
+		}
 	}
 	close(listenfd);
 	if (pidfile) {
@@ -2639,3 +2677,4 @@ int main(int argc, char **argv)
 	}
 	return 0;
 }
+
