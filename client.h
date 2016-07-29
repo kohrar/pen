@@ -20,5 +20,5 @@ typedef struct {
 extern client *clients;
 extern int clients_max;
 
-extern int store_client(struct sockaddr_storage *);
+extern int store_client(struct sockaddr_storage *, int reuse);
 extern void expand_clienttable(int);

@@ -15,8 +15,11 @@ client *clients;
 int clients_max = 0;
 int client_acl;
 
-/* Store client and return index */
-int store_client(struct sockaddr_storage *cli)
+/* Store client and return index
+ *  cli    - client connection
+ *  reuse  - whether to reuse previous client entry with the same address
+ */
+int store_client(struct sockaddr_storage *cli, int reuse)
 {
 	int i;
 	int empty = -1;		/* first empty slot */
@@ -36,16 +39,18 @@ int store_client(struct sockaddr_storage *cli)
 	}
 
 	for (i = 0; i < clients_max; i++) {
-		/* look for client with same family and address */
-		if (family == clients[i].addr.ss_family) {
-			if (family == AF_UNIX) break;
-			if (family == AF_INET) {
-				si = (struct sockaddr_in *)&clients[i].addr;
-				if (ad == si->sin_addr.s_addr) break;
-			}
-			if (family == AF_INET6) {
-				si6 = (struct sockaddr_in6 *)&clients[i].addr;
-				if (!memcmp(ad6, &si6->sin6_addr, sizeof *ad6)) break;
+		/* look for client with same family and address to reuse */
+		if (reuse) {
+			if (family == clients[i].addr.ss_family) {
+				if (family == AF_UNIX) break;
+				if (family == AF_INET) {
+					si = (struct sockaddr_in *)&clients[i].addr;
+					if (ad == si->sin_addr.s_addr) break;
+				}
+				if (family == AF_INET6) {
+					si6 = (struct sockaddr_in6 *)&clients[i].addr;
+					if (!memcmp(ad6, &si6->sin6_addr, sizeof *ad6)) break;
+				}
 			}
 		}
 

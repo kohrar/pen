@@ -52,6 +52,16 @@ int pen_getport(struct sockaddr_storage *a)
 	return 0;
 }
 
+/* Returns port from file descriptor */
+int pen_getportfd(int fd)
+{
+	struct sockaddr_storage sin;
+	socklen_t addrlen = sizeof(sin);
+	getsockname(fd, (struct sockaddr *)&sin, &addrlen);
+
+	return pen_getport(&sin);
+}
+
 int pen_setport(struct sockaddr_storage *a, int port)
 {
 	struct sockaddr_in *si;
@@ -111,6 +121,16 @@ char *pen_ntoa(struct sockaddr_storage *a)
 	}
 	return b;
 }
+
+/* Returns address from file descriptor */
+char *pen_fdtoa(int fd) {
+	struct sockaddr_storage sin;
+	socklen_t addrlen = sizeof(sin);
+	getsockname(fd, (struct sockaddr *)&sin, &addrlen);
+
+	return pen_ntoa(&sin);
+}
+
 
 void pen_dumpaddr(struct sockaddr_storage *a)
 {
@@ -216,3 +236,5 @@ int pen_aton(char *name, struct sockaddr_storage *addr)
 	freeaddrinfo(ai);
 	return result;
 }
+
+

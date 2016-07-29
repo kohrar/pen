@@ -83,6 +83,7 @@ static int tcp_nodelay = 0;
 static int listen_queue = CONNECTIONS_MAX;
 
 static int asciidump;
+static int asciiproto = 1;
 static int loopflag;
 static int exit_enabled = 0;
 
@@ -92,7 +93,6 @@ static int hupcounter = 0;
 static int stats_flag = 0;
 static int restart_log_flag = 0;
 #endif
-static int ssh = 0;
 static int http = 0;
 
 static char *cfgfile = NULL;
@@ -337,9 +337,10 @@ static int webstats(void)
 		"<td bgcolor=\"#80f080\">Pending data down</td>\n"
 		"<td bgcolor=\"#80f080\">Pending data up</td>\n"
 		"<td bgcolor=\"#80f080\">Client</td>\n"
-		"<td bgcolor=\"#80f080\">Client IP</td>\n"
+		"<td bgcolor=\"#80f080\">Client Address</td>\n"
+		"<td bgcolor=\"#80f080\">Source Address</td>\n"
 		"<td bgcolor=\"#80f080\">Server</td>\n"
-		"<td bgcolor=\"#80f080\">Server IP</td>\n"
+		"<td bgcolor=\"#80f080\">Server Address</td>\n"
 		"</tr>\n");
 	for (i = 0; i < connections_max; i++) {
 		if (conns[i].downfd == -1) continue;
@@ -361,12 +362,20 @@ static int webstats(void)
 			);
 
 		fprintf(fp,
+			"<td>%s:%d</td>\n",
+			pen_fdtoa(conns[i].upfd),
+			pen_getportfd(conns[i].upfd)
+			);
+
+		fprintf(fp,
 			"<td>%d</td>\n"
-			"<td>%s:%d</td>\n"
-			"</tr>\n",
+			"<td>%s:%d</td>\n",
 			conns[i].server,
 			pen_ntoa(&servers[conns[i].server].addr), pen_getport(&servers[conns[i].server].addr)
 			);
+
+		fprintf(fp, "</tr>\n");
+
 	}
 	fprintf(fp, "</table>\n");
 	fprintf(fp,
@@ -554,9 +563,9 @@ static void log_connection(FILE *fp, int i, int state)
 							pen_getport(&servers[conns[i].server].addr));
 
 	if (state == 0) {
-		fprintf(fp, "connect");
+		fprintf(fp, "connect 0");
 	} else {
-		fprintf(fp, "disconnect");
+		fprintf(fp, "disconnect %ld", (long)(now - clients[i].last));
 	}
 
 	fprintf(fp, "\n");
@@ -564,7 +573,7 @@ static void log_connection(FILE *fp, int i, int state)
 }
 
 static void log_close_conn(int conn) {
-	if (logfp && ssh) {
+	if (logfp && ! asciiproto) {
 		log_connection(logfp, conn, 1);
 	}
 }
@@ -763,11 +772,11 @@ static int copy_up(int i)
 
 		if (debuglevel > 2) dump(b, rc);
 
-		if (logfp && ! ssh) {
+		if (logfp && asciiproto) {
 			log_request(logfp, i, b, rc);
 			if (debuglevel > 2) log_request(stderr, i, b, rc);
 		}
-		if (logsock != -1) {
+		if (logsock != -1 && asciiproto) {
 			netlog(logsock, i, b, rc);
 		}
 
@@ -917,6 +926,7 @@ static void usage(void)
 #endif
 	       "	  [host:]port h1[:p1[:maxc1[:hard1[:weight1[:prio1]]]]] [h2[:p2[:maxc2[:hard2[:weight2[:prio2]]]]]] ...\n"
 	       "\n"
+	       "  -A    Non-ascii protocol. Logging records only TCP connection and disconnections\n"
 	       "  -B host:port abuse server for naughty clients\n"
 	       "  -C port   control port\n"
 	       "  -T sec    tracking time in seconds (0 = forever) [%d]\n"
@@ -926,7 +936,6 @@ static void usage(void)
 	       "  -O option	use option in penctl format\n"
 	       "  -P	use poll() rather than select()\n"
 	       "  -Q    use kqueue to manage events (BSD)\n"
-	       "  -S    use with SSH server. Logging does not log traffic as HTTP requests\n"
 	       "  -W    use weight for server selection\n"
 	       "  -X	enable 'exit' command for control port\n"
 	       "  -a	debugging dumps in ascii format\n"
@@ -1208,13 +1217,13 @@ static void write_cfg(char *p)
 	save_acls(fp);
 	if (asciidump) fprintf(fp, "ascii\n");
 	else fprintf(fp, "no ascii\n");
+	if (asciiproto) fprintf(fp, "asciiproto\n");
 	fprintf(fp, "blacklist %d\n", blacklist_time);
 	fprintf(fp, "client_acl %d\n", client_acl);
 	fprintf(fp, "control_acl %d\n", control_acl);
 	fprintf(fp, "debug %d\n", debuglevel);
 	if (server_alg & ALG_HASH) fprintf(fp, "hash\n");
 	else fprintf(fp, "no hash\n");
-	if (ssh) fprintf(fp, "ssh\n");
 	if (http) fprintf(fp, "http\n");
 	else fprintf(fp, "no http\n");
 	if (logfile) fprintf(fp, "log %s\n", logfile);
@@ -1410,8 +1419,8 @@ static void do_cmd(char *b, void (*output)(void *, char *, ...), void *op)
 		}
 	} else if (!strcmp(p, "hash")) {
 		server_alg |= ALG_HASH;
-	} else if (!strcmp(p, "ssh")) {
-		ssh = 1;
+	} else if (!strcmp(p, "asciiproto")) {
+		asciiproto = 1;
 	} else if (!strcmp(p, "http")) {
 		http = 1;
 	} else if (!strcmp(p, "idle_timeout")) {
@@ -1477,6 +1486,8 @@ static void do_cmd(char *b, void (*output)(void *, char *, ...), void *op)
 			del_acl(a);
 		} else if (!strcmp(p, "ascii")) {
 			asciidump = 0;
+		} else if (!strcmp(p, "asciiproto")) {
+			asciiproto = 0;
 		} else if (!strcmp(p, "dummy")) {
 			dummy = 0;
 		} else if (!strcmp(p, "hash")) {
@@ -1824,7 +1835,9 @@ static int add_client(int downfd, struct sockaddr_storage *cli_addr)
 		}
 	}
 
-	client = store_client(cli_addr);	// no server yet
+	// keep track of client in clients.
+	// Reuse old clients only if http (ie. asciiproto)
+	client = store_client(cli_addr, (asciiproto == 1));
 	DEBUG(2, "store_client returns %d", client);
 
 #ifdef HAVE_LIBSSL
@@ -2069,7 +2082,7 @@ static void check_listen_socket(void)
 			/* Add client, get client ID */
 			int conn = add_client(downfd, &cli_addr);
 
-			if (logfp && ssh) {
+			if (logfp && ! asciiproto) {
 				/* log a new connection */
 				log_connection(logfp, conn, 0);
 			}
@@ -2262,7 +2275,7 @@ static int handle_events(int *pending_close)
 		if (conns[conn].state == CS_CLOSED) {
 			DEBUG(2, "Connection %d was closed", conn);
 
-			if (logfp && ssh) {
+			if (logfp && ! asciiproto) {
 				log_connection(logfp, conn, 1);
 			}
 
@@ -2332,27 +2345,37 @@ static void check_idle_timeout(void)
 
 void mainloop(void)
 {
-        int npc;
-        int *pending_close;
+	int npc;
+	int *pending_close;
+
 	event_init();
 	event_add(listenfd, EVENT_READ);
 	dlist_init(connections_max);
+
 	if (ctrlfd != -1) event_add(ctrlfd, EVENT_READ);
-        setup_signals();
-        loopflag = 1;
-        pending_close = pen_malloc(connections_max * sizeof *pending_close);
+
+	setup_signals();
+	loopflag = 1;
+
+	pending_close = pen_malloc(connections_max * sizeof *pending_close);
 	DEBUG(2, "mainloop()");
-        while (loopflag) {
-                check_signals();
+
+	while (loopflag) {
+		check_signals();
+
 		if (dsr_if) dsr_arp(listenfd);
+
 		arm_listenfd();
-                event_wait();
-                now = time(NULL);
+		event_wait();
+
+		now = time(NULL);
+
 		DEBUG(2, "After event_wait()");
+
 		npc = handle_events(pending_close);
 		pending_and_closing(pending_close, npc);
 		check_idle_timeout();
-        }
+	}
 }
 
 static int options(int argc, char **argv)
@@ -2361,13 +2384,16 @@ static int options(int argc, char **argv)
 	char b[1024];
 
 #ifdef HAVE_LIBSSL
-	char *opt = "B:C:F:O:S:T:b:c:e:i:j:l:m:o:p:q:t:u:w:x:DHNPQWXUadfhnrsE:K:G:A:ZRL:";
+	char *opt = "A:B:C:F:O:S:T:b:c:e:i:j:l:m:o:p:q:t:u:w:x:DHNPQWXUadfhnrsE:K:G:A:ZRL:";
 #else
-	char *opt = "B:C:F:O:S:T:b:c:e:i:j:l:m:o:p:q:t:u:w:x:DHNPQWXUadfhnrs";
+	char *opt = "A:B:C:F:O:S:T:b:c:e:i:j:l:m:o:p:q:t:u:w:x:DHNPQWXUadfhnrs";
 #endif
 
 	while ((c = getopt(argc, argv, opt)) != -1) {
 		switch (c) {
+		case 'A':
+			asciiproto = 0;
+			break;
 		case 'B':
 			a_server = optarg;
 			break;
@@ -2395,10 +2421,8 @@ static int options(int argc, char **argv)
 			event_init = poll_init;
 			break;
 		case 'S':
-			// -S toggles SSH flag
-			// fprintf(stderr, "As of 0.28.1 the server table is expanded dynamically,\n"
-			// 		"making the -S option obsolete\n");
-			ssh = 1;
+			fprintf(stderr, "As of 0.28.1 the server table is expanded dynamically,\n"
+					"making the -S option obsolete\n");
 			break;
 		case 'T':
 			tracking_time = atoi(optarg);
