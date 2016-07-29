@@ -250,24 +250,24 @@ static int webstats(void)
 		"<title>Pen status page</title>\n"
 		"</head>\n"
 		"<body bgcolor=\"#ffffff\">"
-		"<h1>Pen status page</h1>\n");
+		"<h1>Pen Status Page</h1>\n");
 	fprintf(fp,
 		"Time %s, %d servers, %d current<p>\n",
 		nowstr, nservers, current);
 	fprintf(fp,
 		"<table bgcolor=\"#c0c0c0\">\n"
 		"<tr>\n"
-		"<td bgcolor=\"#80f080\">Server</td>\n"
-		"<td bgcolor=\"#80f080\">Address</td>\n"
-		"<td bgcolor=\"#80f080\">Status</td>\n"
-		"<td bgcolor=\"#80f080\">Port</td>\n"
-		"<td bgcolor=\"#80f080\">Connections</td>\n"
-		"<td bgcolor=\"#80f080\">Max soft</td>\n"
-		"<td bgcolor=\"#80f080\">Max hard</td>\n"
-		"<td bgcolor=\"#80f080\">Sent</td>\n"
-		"<td bgcolor=\"#80f080\">Received</td>\n"
-		"<td bgcolor=\"#80f080\">Weight</td>\n"
-		"<td bgcolor=\"#80f080\">Prio</td>\n"
+		"<th bgcolor=\"#80f080\">Server</th>\n"
+		"<th bgcolor=\"#80f080\">Address</th>\n"
+		"<th bgcolor=\"#80f080\">Port</th>\n"
+		"<th bgcolor=\"#80f080\">Status</th>\n"
+		"<th bgcolor=\"#80f080\">Connections</th>\n"
+		"<th bgcolor=\"#80f080\">Max soft</th>\n"
+		"<th bgcolor=\"#80f080\">Max hard</th>\n"
+		"<th bgcolor=\"#80f080\">Sent</th>\n"
+		"<th bgcolor=\"#80f080\">Received</th>\n"
+		"<th bgcolor=\"#80f080\">Weight</th>\n"
+		"<th bgcolor=\"#80f080\">Prio</th>\n"
 		"</tr>\n");
 	for (i = 0; i < nservers; i++) {
 		fprintf(fp,
@@ -285,7 +285,7 @@ static int webstats(void)
 			"<td>%d</td>\n"
 			"</tr>\n",
 			i, pen_ntoa(&servers[i].addr),
-			servers[i].status, pen_getport(&servers[i].addr),
+			pen_getport(&servers[i].addr), servers[i].status,
 			servers[i].c, servers[i].maxc, servers[i].hard,
 			servers[i].sx, servers[i].rx,
 			servers[i].weight, servers[i].prio);
@@ -297,14 +297,14 @@ static int webstats(void)
 	fprintf(fp,
 		"<table bgcolor=\"#c0c0c0\">\n"
 		"<tr>\n"
-		"<td bgcolor=\"#80f080\">Client</td>\n"
-		"<td bgcolor=\"#80f080\">Address</td>\n"
-		"<td bgcolor=\"#80f080\">Port</td>\n"
-		"<td bgcolor=\"#80f080\">Age(secs)</td>\n"
-		"<td bgcolor=\"#80f080\">Last server</td>\n"
-		"<td bgcolor=\"#80f080\">Connects</td>\n"
-		"<td bgcolor=\"#80f080\">Sent</td>\n"
-		"<td bgcolor=\"#80f080\">Received</td>\n"
+		"<th bgcolor=\"#80f080\">Client</th>\n"
+		"<th bgcolor=\"#80f080\">Address</th>\n"
+		"<th bgcolor=\"#80f080\">Port</th>\n"
+		"<th bgcolor=\"#80f080\">Age(secs)</th>\n"
+		"<th bgcolor=\"#80f080\">Last server</th>\n"
+		"<th bgcolor=\"#80f080\">Connects</th>\n"
+		"<th bgcolor=\"#80f080\">Sent</th>\n"
+		"<th bgcolor=\"#80f080\">Received</th>\n"
 		"</tr>\n");
 	for (i = 0; i < clients_max; i++) {
 		if (clients[i].last == 0) continue;
@@ -331,16 +331,16 @@ static int webstats(void)
 	fprintf(fp,
 		"<table bgcolor=\"#c0c0c0\">\n"
 		"<tr>\n"
-		"<td bgcolor=\"#80f080\">Connection</td>\n"
-		"<td bgcolor=\"#80f080\">Downfd</td>\n"
-		"<td bgcolor=\"#80f080\">Upfd</td>\n"
-		"<td bgcolor=\"#80f080\">Pending data down</td>\n"
-		"<td bgcolor=\"#80f080\">Pending data up</td>\n"
-		"<td bgcolor=\"#80f080\">Client</td>\n"
-		"<td bgcolor=\"#80f080\">Client Address</td>\n"
-		"<td bgcolor=\"#80f080\">Source Address</td>\n"
-		"<td bgcolor=\"#80f080\">Server</td>\n"
-		"<td bgcolor=\"#80f080\">Server Address</td>\n"
+		"<th bgcolor=\"#80f080\">Connection</th>\n"
+		"<th bgcolor=\"#80f080\">Downfd</th>\n"
+		"<th bgcolor=\"#80f080\">Upfd</th>\n"
+		"<th bgcolor=\"#80f080\">Pending data down</th>\n"
+		"<th bgcolor=\"#80f080\">Pending data up</th>\n"
+		"<th bgcolor=\"#80f080\">Client</th>\n"
+		"<th bgcolor=\"#80f080\">Client Address</th>\n"
+		"<th bgcolor=\"#80f080\">Source Address</th>\n"
+		"<th bgcolor=\"#80f080\">Server</th>\n"
+		"<th bgcolor=\"#80f080\">Server Address</th>\n"
 		"</tr>\n");
 	for (i = 0; i < connections_max; i++) {
 		if (conns[i].downfd == -1) continue;
