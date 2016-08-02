@@ -410,12 +410,13 @@ static int jsonstats(void)
 
 	fprintf(fp,
 		"{\n"
-		"\"time\": \"%s\",\n"
+		"\"server_time\": \"%s\",\n"
+		"\"time\": %ld,\n"
 		"\"uptime\": %ld,\n"
 		"\"server_count\": %d,\n"
 		"\"server_current\": %d,\n"
 		"\"servers\": [\n",
-		nowstr, now - start_time, nservers, current);
+		nowstr, now, now - start_time, nservers, current);
 
 	for (i = 0; i < nservers; i++) {
 		if (i != 0) fprintf(fp, ",\n");
