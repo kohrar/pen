@@ -79,11 +79,12 @@
 
 static int dummy = 0;		/* use pen as a test target */
 time_t now;
+time_t start_time;			/* keep track of pen uptime */
 static int tcp_nodelay = 0;
 static int listen_queue = CONNECTIONS_MAX;
 
 static int asciidump;
-static int asciiproto = 1;
+static int asciiproto = 1;	/* Is Pen handling ASCII protocols? Defaults to true */
 static int loopflag;
 static int exit_enabled = 0;
 
@@ -252,8 +253,8 @@ static int webstats(void)
 		"<body bgcolor=\"#ffffff\">"
 		"<h1>Pen Status Page</h1>\n");
 	fprintf(fp,
-		"Time %s, %d servers, %d current<p>\n",
-		nowstr, nservers, current);
+		"Time %s, Uptime %ld, %d servers, %d current<p>\n",
+		nowstr, now - start_time, nservers, current);
 	fprintf(fp,
 		"<table bgcolor=\"#c0c0c0\">\n"
 		"<tr>\n"
@@ -410,10 +411,11 @@ static int jsonstats(void)
 	fprintf(fp,
 		"{\n"
 		"\"time\": \"%s\",\n"
+		"\"uptime\": %ld,\n"
 		"\"server_count\": %d,\n"
 		"\"server_current\": %d,\n"
 		"\"servers\": [\n",
-		nowstr, nservers, current);
+		nowstr, now - start_time, nservers, current);
 
 	for (i = 0; i < nservers; i++) {
 		if (i != 0) fprintf(fp, ",\n");
@@ -2480,6 +2482,8 @@ void mainloop(void)
 {
 	int npc;
 	int *pending_close;
+
+	start_time = time(NULL);
 
 	event_init();
 	event_add(listenfd, EVENT_READ);
