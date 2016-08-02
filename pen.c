@@ -390,6 +390,7 @@ static int jsonstats(void)
 {
 	FILE *fp;
 	int i;
+	int repeat;
 	time_t now;
 	struct tm *nowtm;
 	char nowstr[80];
@@ -436,7 +437,8 @@ static int jsonstats(void)
 			"	\"priority\": %d\n"
 			"}",
 			i, pen_ntoa(&servers[i].addr),
-			pen_getport(&servers[i].addr), servers[i].status,
+			pen_getport(&servers[i].addr),
+			(now > servers[i].status) ? 0 : servers[i].status,
 			servers[i].c, servers[i].maxc, servers[i].hard,
 			servers[i].sx, servers[i].rx,
 			servers[i].weight, servers[i].prio);
@@ -447,9 +449,9 @@ static int jsonstats(void)
 		"\"clients\": [\n",
 		clients_max);
 
-	for (i = 0; i < clients_max; i++) {
+	for (i = 0, repeat = 0; i < clients_max; i++) {
 		if (clients[i].last == 0) continue;
-		if (i != 0) fprintf(fp, ",\n");
+		if (repeat > 0) fprintf(fp, ",\n");
 
 		fprintf(fp,
 			"{\n"
@@ -465,6 +467,7 @@ static int jsonstats(void)
 			i, pen_ntoa(&clients[i].addr), pen_getport(&clients[i].addr),
 			(long)(now-clients[i].last), clients[i].server, clients[i].connects,
 			clients[i].csx, clients[i].crx);
+		repeat++;
 	}
 
 	fprintf(fp, "\n],\n"
@@ -474,9 +477,9 @@ static int jsonstats(void)
 		"\"connections\": [\n",
 		connections_max, connections_used, connections_last);
 
-	for (i = 0; i < connections_max; i++) {
+	for (i = 0, repeat = 0; i < connections_max; i++) {
 		if (conns[i].downfd == -1) continue;
-		if (i != 0) fprintf(fp, ",\n");
+		if (repeat > 0) fprintf(fp, ",\n");
 
 		fprintf(fp,
 			"{\n"
@@ -500,8 +503,8 @@ static int jsonstats(void)
 			pen_ntoa(&clients[conns[i].client].addr), pen_getport(&clients[conns[i].client].addr),
 			pen_fdtoa(conns[i].upfd), pen_getportfd(conns[i].upfd),
 			conns[i].server,
-			pen_ntoa(&servers[conns[i].server].addr), pen_getport(&servers[conns[i].server].addr)
-			);
+			pen_ntoa(&servers[conns[i].server].addr), pen_getport(&servers[conns[i].server].addr));
+		repeat++;
 	}
 
 	fprintf(fp, "\n]\n}");
@@ -1693,7 +1696,7 @@ static void do_cmd(char *b, void (*output)(void *, char *, ...), void *op)
 			} else if (!strcmp(p, "hard")) {
 				servers[n].hard = atoi(q);
 			} else if (!strcmp(p, "blacklist")) {
-				servers[n].status = now+atoi(q)-blacklist_time;
+				servers[n].status = now + atoi(q); /* Blacklist for q seconds */
 			} else if (!strcmp(p, "weight")) {
 				servers[n].weight = atoi(q);
 			} else if (!strcmp(p, "prio")) {
@@ -2410,10 +2413,6 @@ static int handle_events(int *pending_close)
 		}
 		if (conns[conn].state == CS_CLOSED) {
 			DEBUG(2, "Connection %d was closed", conn);
-
-			if (logfp && ! asciiproto) {
-				log_connection(logfp, conn, 1);
-			}
 
 			closing = 1;
 		}

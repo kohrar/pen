@@ -110,7 +110,8 @@ void setaddress(int server, char *s, int dp, char *proto)
 
 void blacklist_server(int server)
 {
-	servers[server].status = now;
+	/* Blacklist for blacklist_time seconds */
+	servers[server].status = now + blacklist_time;
 }
 
 int unused_server_slot(int i)
@@ -125,7 +126,7 @@ int unused_server_slot(int i)
 
 int server_is_blacklisted(int i)
 {
-	return (now-servers[i].status < blacklist_time);
+	return (now < servers[i].status);
 }
 
 int server_is_unavailable(int i)
@@ -334,7 +335,8 @@ int try_server(int index, int conn)
 		DEBUG(1, "No port for you!");
 		return 0;
 	}
-	if (now-servers[index].status < blacklist_time) {
+
+	if (server_is_blacklisted(index)) {
 		DEBUG(1, "Server %d is blacklisted", index);
 		return 0;
 	}
