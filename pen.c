@@ -385,6 +385,130 @@ static int webstats(void)
 	return 1;
 }
 
+static int jsonstats(void)
+{
+	FILE *fp;
+	int i;
+	time_t now;
+	struct tm *nowtm;
+	char nowstr[80];
+
+	if (webfile == NULL) {
+		debug("Don't know where to write web stats; see -w option");
+		return 0;
+	}
+	fp = fopen(webfile, "w");
+	if (fp == NULL) {
+		debug("Can't write to %s", webfile);
+		return 0;
+	}
+
+	now = time(NULL);
+	nowtm = localtime(&now);
+	strftime(nowstr, sizeof(nowstr), "%Y-%m-%d %H:%M:%S", nowtm);
+
+	fprintf(fp,
+		"{\n"
+		"\"time\": \"%s\",\n"
+		"\"server_count\": %d,\n"
+		"\"server_current\": %d,\n"
+		"\"servers\": [\n",
+		nowstr, nservers, current);
+
+	for (i = 0; i < nservers; i++) {
+		if (i != 0) fprintf(fp, ",\n");
+
+		fprintf(fp,
+			"{\n"
+			"	\"id\": %d,\n"
+			"	\"listen_address\": \"%s\",\n"
+			"	\"listen_port\": %d,\n"
+			"	\"status\": %d,\n"
+			"	\"connections\": %d,\n"
+			"	\"max_soft\": %d,\n"
+			"	\"max_hard\": %d,\n"
+			"	\"bytes_tx\": %" PRIu64 ",\n"
+			"	\"bytes_rx\": %" PRIu64 ",\n"
+			"	\"weight\": %d,\n"
+			"	\"priority\": %d\n"
+			"}",
+			i, pen_ntoa(&servers[i].addr),
+			pen_getport(&servers[i].addr), servers[i].status,
+			servers[i].c, servers[i].maxc, servers[i].hard,
+			servers[i].sx, servers[i].rx,
+			servers[i].weight, servers[i].prio);
+	}
+
+	fprintf(fp, "\n],\n"
+		"\"client_limit\": %d,\n"
+		"\"clients\": [\n",
+		clients_max);
+
+	for (i = 0; i < clients_max; i++) {
+		if (clients[i].last == 0) continue;
+		if (i != 0) fprintf(fp, ",\n");
+
+		fprintf(fp,
+			"{\n"
+			"	\"id\": %d,\n"
+			"	\"remote_address\": \"%s\",\n"
+			"	\"remote_port\": %d,\n"
+			"	\"age\": %ld,\n"
+			"	\"last_server\": %d,\n"
+			"	\"connections\": %ld,\n"
+			"	\"bytes_tx\": %" PRIu64 ",\n"
+			"	\"bytes_rx\": %" PRIu64 "\n"
+			"}",
+			i, pen_ntoa(&clients[i].addr), pen_getport(&clients[i].addr),
+			(long)(now-clients[i].last), clients[i].server, clients[i].connects,
+			clients[i].csx, clients[i].crx);
+	}
+
+	fprintf(fp, "\n],\n"
+		"\"connections_limit\": %d,\n"
+		"\"connections_used\": %d,\n"
+		"\"connections_last\": %d,\n"
+		"\"connections\": [\n",
+		connections_max, connections_used, connections_last);
+
+	for (i = 0; i < connections_max; i++) {
+		if (conns[i].downfd == -1) continue;
+		if (i != 0) fprintf(fp, ",\n");
+
+		fprintf(fp,
+			"{\n"
+			"	\"id\": %d,\n"
+			"	\"client_fd\": %d,\n"
+			"	\"server_fd\": %d,\n"
+			"	\"pending_bytes_to_client\": %d,\n"
+			"	\"pending_bytes_to_server\": %d,\n"
+			"	\"client_id\": %d,\n"
+			"	\"client_address\": \"%s\",\n"
+			"	\"client_port\": %d,\n"
+			"	\"connection_address\": \"%s\",\n"
+			"	\"connection_port\": %d,\n"
+			"	\"server_id\": %d,\n"
+			"	\"server_address\": \"%s\",\n"
+			"	\"server_port\": %d\n"
+			"}",
+			i, conns[i].downfd, conns[i].upfd,
+			conns[i].downn, conns[i].upn,
+			conns[i].client,
+			pen_ntoa(&clients[conns[i].client].addr), pen_getport(&clients[conns[i].client].addr),
+			pen_fdtoa(conns[i].upfd), pen_getportfd(conns[i].upfd),
+			conns[i].server,
+			pen_ntoa(&servers[conns[i].server].addr), pen_getport(&servers[conns[i].server].addr)
+			);
+	}
+
+	fprintf(fp, "\n]\n}");
+	fclose(fp);
+	return 1;
+}
+
+
+
+
 #ifndef WINDOWS
 static void textstats(void)
 {
@@ -1588,7 +1712,16 @@ static void do_cmd(char *b, void (*output)(void *, char *, ...), void *op)
 		int conn = fd2conn_get(fd);
 		output(op, "Socket %d belongs to connection %d\n", fd, conn);
 	} else if (!strcmp(p, "status")) {
-		if (webstats()) {
+		int status = 0;
+
+		p = strtok(NULL, " ");
+		if (p != NULL && ! strcmp(p, "json")) {
+			status = jsonstats();
+		} else {
+			status = webstats();
+		}
+
+		if (status) {
 			fp = fopen(webfile, "r");
 			if (fp == NULL) {
 				output(op, "Can't read webstats\n");
